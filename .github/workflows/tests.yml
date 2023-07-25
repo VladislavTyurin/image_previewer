@@ -41,6 +41,6 @@ jobs:
         working-directory: /home/runner/work/image_previewer/image_previewer
 
       - name: make integration test
-        run: make intergation_test
+        run: make integration_test
         working-directory: /home/runner/work/image_previewer/image_previewer
       
