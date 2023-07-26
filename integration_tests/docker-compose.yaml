@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  # test_image_previewer:
+  #   build: ../
+  #   ports:
+  #     - 1234:1234
+  #   depends_on:
+  #     test_server:
+  #       condition: "service_started"
+
+  test_server:
+    hostname: test.images
+    build: .
+    ports:
+      - 8181:8181

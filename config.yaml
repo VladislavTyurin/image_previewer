@@ -1,0 +1,4 @@
+cacheLimit: 20
+cacheDir: /tmp/previewer/images
+
+port: 1234
