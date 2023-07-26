@@ -4,13 +4,18 @@ import (
 	"errors"
 	"image/jpeg"
 	"net/http"
-	"os"
+	"regexp"
+	"sync"
 
-	"github.com/VladislavTyurin/image_previewer/middleware"
+	"github.com/VladislavTyurin/image_previewer/cache"
+	"github.com/VladislavTyurin/image_previewer/config"
 	"github.com/disintegration/imaging"
 )
 
 var (
+	ErrInvalidURL    = errors.New("invalid url")
+	ErrGetFromSource = errors.New("error getting image from source")
+	ErrNotJpegImage  = errors.New("image isn't JPEG image")
 	ErrImageNotFound = errors.New("image not found")
 	ErrSizeTooSmall  = errors.New("width or height must be greater or equal 128")
 )
@@ -24,28 +29,47 @@ type Previewer interface {
 	Fill(http.ResponseWriter, *http.Request)
 }
 
-type previewerImpl struct{}
+type previewerImpl struct {
+	client      *http.Client
+	fillPattren *regexp.Regexp
+	cache       cache.Cache
+	conf        *config.Config
+	mtx         sync.RWMutex
+}
 
-func NewPreviewer() Previewer {
-	return &previewerImpl{}
+func NewPreviewer(conf *config.Config, cache cache.Cache) Previewer {
+	return &previewerImpl{
+		client:      &http.Client{},
+		fillPattren: regexp.MustCompile(`/fill/(\d+)/(\d+)/(.+)`),
+		cache:       cache,
+		conf:        conf,
+	}
 }
 
 func (p *previewerImpl) Fill(w http.ResponseWriter, r *http.Request) {
-	width := middleware.GetFromContext(r.Context(), "width").(int)
-	height := middleware.GetFromContext(r.Context(), "height").(int)
-	image := middleware.GetFromContext(r.Context(), "image").(*os.File)
+	params, err := p.validateURL(r)
+	if err != nil {
+		if errors.Is(err, ErrInvalidURL) {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+		return
+	}
 
-	if width < 128 || height < 128 {
+	if params.width < 128 || params.height < 128 {
 		errResponse(w, http.StatusBadRequest, ErrSizeTooSmall.Error())
 		return
 	}
 
-	img, err := jpeg.Decode(image)
+	img, err := p.getFromSource(w, r, params.source)
 	if err != nil {
-		errResponse(w, http.StatusInternalServerError, err.Error())
+		w.Write([]byte(err.Error()))
 		return
 	}
-	preview := imaging.Resize(img, width, height, imaging.Lanczos)
+
+	preview := imaging.Resize(img, params.width, params.height, imaging.Lanczos)
 	if err = jpeg.Encode(w, preview, &jpeg.Options{
 		Quality: 100,
 	}); err != nil {

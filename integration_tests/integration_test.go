@@ -15,22 +15,20 @@ import (
 
 	"github.com/VladislavTyurin/image_previewer/cache"
 	"github.com/VladislavTyurin/image_previewer/config"
-	"github.com/VladislavTyurin/image_previewer/middleware"
 	"github.com/VladislavTyurin/image_previewer/previewer"
 	"github.com/stretchr/testify/require"
 )
 
 func fillHandler() (http.Handler, cache.Cache) {
 	c := cache.NewCache(2)
-	m := middleware.NewMiddleware(&config.Config{
+	pr := previewer.NewPreviewer(&config.Config{
 		CacheLimit: 2,
 		CacheDir:   "tmp",
 		Host:       "127.0.0.1",
 		Port:       1234,
 	},
 		c)
-	pr := previewer.NewPreviewer()
-	return m.ValidateURL(m.GetFromSource(http.HandlerFunc(pr.Fill))), c
+	return http.HandlerFunc(pr.Fill), c
 }
 
 func TestGetImageSuccess(t *testing.T) {
