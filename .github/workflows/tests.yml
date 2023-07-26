@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      _ final*
 
 env:
   GO111MODULE: "on"
