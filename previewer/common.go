@@ -39,20 +39,14 @@ func (p *previewerImpl) validateURL(r *http.Request) (*fillParams, error) {
 }
 
 func (p *previewerImpl) getFromSource(w http.ResponseWriter, r *http.Request, source string) (image.Image, error) {
-	p.mtx.RLock()
 	if value, ok := p.cache.Get(cache.Key(source)); ok {
-		p.mtx.RUnlock()
 		return p.handleImageFromDisk(value.(string))
 	}
 
-	p.mtx.RUnlock()
 	return p.handleFromRemote(w, r, source)
 }
 
 func (p *previewerImpl) handleImageFromDisk(imageFileName string) (image.Image, error) {
-	p.mtx.RLock()
-	defer p.mtx.RUnlock()
-
 	f, err := os.Open(imageFileName)
 	if err != nil {
 		return nil, err
@@ -89,13 +83,12 @@ func (p *previewerImpl) handleFromRemote(w http.ResponseWriter, r *http.Request,
 	}
 
 	p.mtx.Lock()
+	defer p.mtx.Unlock()
 	if value, ok := p.cache.Get(cache.Key(source)); ok {
-		p.mtx.Unlock()
 		return p.handleImageFromDisk(value.(string))
 	}
 	f, err := os.CreateTemp(p.conf.CacheDir, "image_")
 	if err != nil {
-		p.mtx.Unlock()
 		w.WriteHeader(http.StatusInternalServerError)
 		return nil, err
 	}
@@ -103,16 +96,13 @@ func (p *previewerImpl) handleFromRemote(w http.ResponseWriter, r *http.Request,
 
 	_, err = io.Copy(f, resp.Body)
 	if err != nil {
-		p.mtx.Unlock()
 		w.WriteHeader(http.StatusInternalServerError)
 		return nil, err
 	}
 
 	f.Seek(0, io.SeekStart)
-
 	p.cache.Set(cache.Key(source), f.Name())
 	img, _, err := image.Decode(f)
-	p.mtx.Unlock()
 
 	return img, err
 }
