@@ -83,12 +83,16 @@ func (p *previewerImpl) handleFromRemote(w http.ResponseWriter, r *http.Request,
 	}
 
 	p.mtx.Lock()
-	defer p.mtx.Unlock()
+	// если 2 одинаковых запроса с картинкой не в кэше, то после работы первой
+	// горутины, необходимо проверить наличие картинки в кэше, чтобы
+	// не создавать для одного ключа 2 разных файлов на диске
 	if value, ok := p.cache.Get(cache.Key(source)); ok {
+		p.mtx.Unlock()
 		return p.handleImageFromDisk(value.(string))
 	}
 	f, err := os.CreateTemp(p.conf.CacheDir, "image_")
 	if err != nil {
+		p.mtx.Unlock()
 		w.WriteHeader(http.StatusInternalServerError)
 		return nil, err
 	}
@@ -96,12 +100,14 @@ func (p *previewerImpl) handleFromRemote(w http.ResponseWriter, r *http.Request,
 
 	_, err = io.Copy(f, resp.Body)
 	if err != nil {
+		p.mtx.Unlock()
 		w.WriteHeader(http.StatusInternalServerError)
 		return nil, err
 	}
 
 	f.Seek(0, io.SeekStart)
 	p.cache.Set(cache.Key(source), f.Name())
+	p.mtx.Unlock()
 	img, _, err := image.Decode(f)
 
 	return img, err
